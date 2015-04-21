@@ -27,6 +27,9 @@ public class SecondaryActivity extends ActionBarActivity {
     private long pauseTime;
     private Button stopButton;
     public AlertDialog alert;
+    private Button testButton;
+    private Long seconds = (long) 0;
+    private Long minutes = (long) 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,15 +41,32 @@ public class SecondaryActivity extends ActionBarActivity {
         surgeryTimer = (TextView) findViewById(R.id.timer);
         startButton = (Button) findViewById(R.id.begin_button);
         stopButton = (Button) findViewById(R.id.stop_button);
+        testButton = (Button) findViewById(R.id.test);
         duration = (EditText) findViewById(R.id.duration);
 
         stopButton.setEnabled(false);
+
+        // sets the toggle button to turn on and off the pump
+        testButton.setOnClickListener( new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if(testButton.isActivated()) {
+                    // not sure if this is the best way to access the service
+                    MainActivity.sendData(new byte[]{5});
+                } else {
+                    MainActivity.sendData(new byte[]{6});
+                }
+            }
+        });
+
+
 
         startButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
 
                 if(startButton.getText().equals("Start")) {
+                    /*
                     try {
                         durationInt = Integer.parseInt(duration.getText().toString())*60000;
                         stopButton.setEnabled(true);
@@ -65,11 +85,15 @@ public class SecondaryActivity extends ActionBarActivity {
                                 .show();
                         Log.e("WARNING", "No time entered");
                     }
+                    */
+                    stopButton.setEnabled(true);
+                    startButton.setText("Pause");
+                    startTimer();
                 } else if(startButton.getText().equals("Pause")){
                     startButton.setText("Resume");
                     timer.cancel();
                 } else {
-                    startTimer((int) pauseTime);
+                    startTimer(); //(int) pauseTime
                     startButton.setText("Pause");
                 }
 
@@ -83,6 +107,8 @@ public class SecondaryActivity extends ActionBarActivity {
                 surgeryTimer.setText("0:00");
                 startButton.setText("Start");
                 timer.cancel();
+                minutes = (long) 0;
+                seconds = (long) 0;
             }
         });
 
@@ -90,18 +116,28 @@ public class SecondaryActivity extends ActionBarActivity {
 
     private CountDownTimer timer;
 
-    public void startTimer(int d) {
-        timer = new CountDownTimer(d, 1000) {
+    public void startTimer() { //int d
+        // changed to count up timer
+        timer = new CountDownTimer(1000*60*60*6, 1000) { // total time is 6 hours
             @Override
             public void onTick(long millisUntilFinished) {
                 // do something with sensorData
                 // send to RFduino
-                Long seconds = millisUntilFinished/1000;
+
+                //Long seconds = millisUntilFinished/1000;
+                //Long minutes = millisUntilFinished/60000;
+
+                seconds++;
                 seconds = seconds%60;
-                Long minutes = millisUntilFinished/60000;
+
+                // increment the minutes if seconds has 0 remainder
+                if(seconds == 0) {
+                    minutes++;
+                }
+
                 pauseTime = millisUntilFinished;
 
-                surgeryTimer.setText(String.format("%d:%02d", minutes, seconds));
+                surgeryTimer.setText(String.format("%d:%02d",minutes, seconds));
             }
 
             @Override

@@ -20,6 +20,8 @@
     <string name="ml_left">ml Left in Bag:</string>
     <string name="title_activity_secondary">SecondaryActivity</string>
     <string name="timer_zero">0:00</string>
+    <string name="toggle_pump">Toggle Pump</string>
+    <string name="toggle_text">Toggle Pump: </string>
 
     <string name="hello_world">Hello world!</string>
 

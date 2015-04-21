@@ -35,7 +35,7 @@ public class MainActivity extends ActionBarActivity implements BluetoothAdapter.
 
     private boolean scanStarted;
     private boolean scanning;
-    private RFduinoService rfduinoService;
+    private static RFduinoService rfduinoService;
     private Button enableBluetoothButton;
     private TextView scanStatusText;
     private Button scanButton;
@@ -89,6 +89,10 @@ public class MainActivity extends ActionBarActivity implements BluetoothAdapter.
             downgradeState(STATE_DISCONNECTED);
         }
     };
+
+    public static void sendData(byte[] data) {
+        rfduinoService.send(data);
+    }
 
     private final BroadcastReceiver rfduinoReceiver = new BroadcastReceiver() {
         @Override

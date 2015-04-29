@@ -1,29 +1,40 @@
 package com.mojo.pumpcontrol;
 
+import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter;
+import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.os.CountDownTimer;
 import android.os.IBinder;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 
-public class MainActivity extends ActionBarActivity implements BluetoothAdapter.LeScanCallback {
+public class MainActivity extends ActionBarActivity {
 
     // State machine
     final private static int STATE_BLUETOOTH_OFF = 1;
@@ -33,21 +44,26 @@ public class MainActivity extends ActionBarActivity implements BluetoothAdapter.
 
     private int state;
 
+    private android.view.ViewGroup dataLayout;
     private boolean scanStarted;
+    private CountDownTimer timer;
     private boolean scanning;
     private static RFduinoService rfduinoService;
-    private Button enableBluetoothButton;
-    private TextView scanStatusText;
-    private Button scanButton;
-    private TextView deviceInfoText;
     private TextView connectionStatusText;
+    private TextView surgeryTimer;
+    private Button startButton;
+    private Button stopButton;
+    private Button testButton;
     private Button connectButton;
-    private EditData valueEdit;
-    private Button sendZeroButton;
-    private Button sendValueButton;
-    private Button clearButton;
-    private LinearLayout dataLayout;
+    private Long seconds = (long) 0;
+    private Long minutes = (long) 0;
+    private String startOn = "1";
+    private String startOff = "0";
+    private List<ScanFilter> filterList = new ArrayList<ScanFilter>();
+    private boolean connected = false;
+    private boolean running = false;
 
+    private final static String TAG = MainActivity.class.getSimpleName();
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothDevice bluetoothDevice;
 
@@ -55,43 +71,52 @@ public class MainActivity extends ActionBarActivity implements BluetoothAdapter.
         @Override
         public void onReceive(Context context, Intent intent) {
             int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, 0);
-            if (state == BluetoothAdapter.STATE_ON) {
-                upgradeState(STATE_DISCONNECTED);
-            } else if (state == BluetoothAdapter.STATE_OFF) {
-                downgradeState(STATE_BLUETOOTH_OFF);
-            }
-        }
-    };
 
-    private final BroadcastReceiver scanModeReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            scanning = (bluetoothAdapter.getScanMode() != BluetoothAdapter.SCAN_MODE_NONE);
-            scanStarted &= scanning;
-            updateUi();
+            if (state == BluetoothAdapter.STATE_CONNECTED) {
+                updateState(STATE_CONNECTED);
+            } else if (state == BluetoothAdapter.STATE_CONNECTING) {
+                updateState(STATE_CONNECTING);
+            } else if (state == BluetoothAdapter.STATE_DISCONNECTED) {
+                updateState(STATE_DISCONNECTED);
+            } else if (state == BluetoothAdapter.STATE_OFF) {
+                updateState(STATE_BLUETOOTH_OFF);
+            }
         }
     };
 
     private final ServiceConnection rfduinoServiceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
+            // set the local service variable to the running service
             rfduinoService = ((RFduinoService.LocalBinder) service).getService();
+
+            // if the service initializes okay (references the BLE adapter) then connect to the device
             if (rfduinoService.initialize()) {
-                if (rfduinoService.connect(bluetoothDevice.getAddress())) {
-                    upgradeState(STATE_CONNECTING);
+                try {
+                    if (rfduinoService.connect(bluetoothDevice.getAddress())) {
+                        updateState(STATE_CONNECTING);
+                        Log.v(TAG, "Service Connected");
+                    }
+                } catch (NullPointerException e) {
+                    Log.e(TAG, "Service Connection Error");
                 }
+
             }
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
             rfduinoService = null;
-            downgradeState(STATE_DISCONNECTED);
+            updateState(STATE_DISCONNECTED);
+
+            Log.v(TAG, "Service Disconnected");
         }
     };
 
-    public static void sendData(byte[] data) {
-        rfduinoService.send(data);
+    public void sendData(byte[] data) {
+        if(!rfduinoService.send(data)) {
+            scan();
+        }
     }
 
     private final BroadcastReceiver rfduinoReceiver = new BroadcastReceiver() {
@@ -99,127 +124,191 @@ public class MainActivity extends ActionBarActivity implements BluetoothAdapter.
         public void onReceive(Context context, Intent intent) {
             final String action = intent.getAction();
             if (RFduinoService.ACTION_CONNECTED.equals(action)) {
-                upgradeState(STATE_CONNECTED);
+                connectButton.setEnabled(false);
+                updateState(STATE_CONNECTED);
             } else if (RFduinoService.ACTION_DISCONNECTED.equals(action)) {
-                downgradeState(STATE_DISCONNECTED);
+                connectButton.setEnabled(true);
+                connected = false;
+                updateState(STATE_DISCONNECTED);
             } else if (RFduinoService.ACTION_DATA_AVAILABLE.equals(action)) {
                 addData(intent.getByteArrayExtra(RFduinoService.EXTRA_DATA));
             }
         }
     };
 
+    public void scan() {
+        scanStarted = true;
+        updateUi();
+
+        ScanCallback scanCallback = new ScanCallback() {
+            @Override
+            public void onScanResult(int callbackType, ScanResult result) {
+                //super.onScanResult(callbackType, result);
+                bluetoothAdapter.getBluetoothLeScanner().stopScan(this);
+                bluetoothDevice = result.getDevice();
+
+                if(!connected) {
+                    connectionStatusText.setText("Device found, connecting...");
+                    Intent rfduinoIntent = new Intent(MainActivity.this, RFduinoService.class);
+                    bindService(rfduinoIntent, rfduinoServiceConnection, BIND_AUTO_CREATE);
+                    connected = true;
+                }
+            }
+        };
+
+        ScanSettings scanSettings = new ScanSettings.Builder().setScanMode(ScanSettings.CALLBACK_TYPE_ALL_MATCHES).build();
+
+        bluetoothAdapter.getBluetoothLeScanner().startScan(filterList, scanSettings, scanCallback);
+
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        // initializes Bluetooth adapter
+        final BluetoothManager bluetoothManager =
+                (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        bluetoothAdapter = bluetoothManager.getAdapter();
 
-        // Bluetooth
-        enableBluetoothButton = (Button) findViewById(R.id.enableBluetooth);
-        enableBluetoothButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                enableBluetoothButton.setEnabled(false);
-                enableBluetoothButton.setText(
-                        bluetoothAdapter.enable() ? "Enabling bluetooth..." : "Enable failed!");
-            }
-        });
+        // clear and add a filter for the device scan
+        filterList.clear();
+        filterList.add(new ScanFilter.Builder().setDeviceName("ECE480").build());
 
-        // Find Device
-        scanStatusText = (TextView) findViewById(R.id.scanStatus);
-
-        scanButton = (Button) findViewById(R.id.scan);
-        scanButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                scanStarted = true;
-                bluetoothAdapter.startLeScan(
-                        new UUID[]{ RFduinoService.UUID_SERVICE },
-                        MainActivity.this);
-            }
-        });
-
-        // Device Info
-        deviceInfoText = (TextView) findViewById(R.id.deviceInfo);
-
-        // Connect Device
         connectionStatusText = (TextView) findViewById(R.id.connectionStatus);
 
+        // run the device scan
+        scan();
+
+        // get UI components
+        surgeryTimer = (TextView) findViewById(R.id.timer);
+        startButton = (Button) findViewById(R.id.begin_button);
+        stopButton = (Button) findViewById(R.id.stop_button);
+        testButton = (Button) findViewById(R.id.test);
         connectButton = (Button) findViewById(R.id.connect);
-        connectButton.setOnClickListener(new View.OnClickListener() {
+        connectButton.setEnabled(true);
+
+        connectButton.setOnClickListener( new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                v.setEnabled(false);
-                connectionStatusText.setText("Connecting...");
-                Intent rfduinoIntent = new Intent(MainActivity.this, RFduinoService.class);
-                bindService(rfduinoIntent, rfduinoServiceConnection, BIND_AUTO_CREATE);
+                scan();
             }
         });
 
-        // Send
-        valueEdit = (EditData) findViewById(R.id.value);
-        valueEdit.setImeOptions(EditorInfo.IME_ACTION_SEND);
-        valueEdit.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+        // set stop button to disabled
+        stopButton.setEnabled(false);
+
+        // sets the toggle button to turn on and off the sensor reading
+        testButton.setOnClickListener( new View.OnClickListener() {
             @Override
-            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-                if (actionId == EditorInfo.IME_ACTION_SEND) {
-                    sendValueButton.callOnClick();
-                    return true;
+            public void onClick(View v) {
+                if(testButton.getText().equals("OFF")) {
+                    // not sure if this is the best way to access the service
+                    sendData(startOff.getBytes());
+                    running = true;
+                } else {
+                    sendData(startOn.getBytes());
+                    running = false;
                 }
-                return false;
             }
         });
 
-        sendZeroButton = (Button) findViewById(R.id.sendZero);
-        sendZeroButton.setOnClickListener(new View.OnClickListener() {
+        // start button on click listener
+        startButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                rfduinoService.send(new byte[]{0});
+                if(startButton.getText().equals("Start")) {
+                    stopButton.setEnabled(true);
+                    startButton.setText("Pause");
+                    startTimer();
+                    if(!running) {
+                        sendData(startOn.getBytes());
+                        running = true;
+                    } else {
+                        sendData(startOff.getBytes());
+                        running = false;
+                    }
+                } else if(startButton.getText().equals("Pause")){
+                    startButton.setText("Resume");
+                    if(!running) {
+                        sendData(startOn.getBytes());
+                        running = true;
+                    } else {
+                        sendData(startOff.getBytes());
+                        running = false;
+                    }
+                    timer.cancel();
+                } else {
+                    if(!running) {
+                        sendData(startOn.getBytes());
+                        running = true;
+                    } else {
+                        sendData(startOff.getBytes());
+                        running = false;
+                    }
+                    startTimer(); //(int) pauseTime
+                    startButton.setText("Pause");
+                }
+
+
             }
         });
 
-        sendValueButton = (Button) findViewById(R.id.sendValue);
-        sendValueButton.setOnClickListener(new View.OnClickListener() {
+        // stop button on click listener
+        stopButton.setOnClickListener( new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                rfduinoService.send(valueEdit.getData());
+                if(running) {
+                    sendData(startOff.getBytes());
+                    running = false;
+                }
+                surgeryTimer.setText("0:00");
+                startButton.setText("Start");
+                timer.cancel();
+                minutes = (long) 0;
+                seconds = (long) 0;
             }
         });
 
-        // Receive
-        clearButton = (Button) findViewById(R.id.clearData);
-        clearButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                dataLayout.removeAllViews();
-            }
-        });
-
-        dataLayout = (LinearLayout) findViewById(R.id.dataLayout);
     }
+
+    public void startTimer() {
+        // counts up
+        timer = new CountDownTimer(1000*60*60*6, 1000) { // total time is 6 hours
+            @Override
+            public void onTick(long millisUntilFinished) {
+                seconds++;
+                seconds = seconds%60;
+
+                // increment the minutes if seconds has 0 remainder
+                if(seconds == 0) {
+                    minutes++;
+                }
+
+                surgeryTimer.setText(String.format("%d:%02d",minutes, seconds));
+            }
+
+            @Override
+            public void onFinish() {
+                surgeryTimer.setText("0:00");
+
+
+            }
+        }.start();
+    }
+
 
     @Override
     protected void onStart() {
         super.onStart();
 
-        registerReceiver(scanModeReceiver, new IntentFilter(BluetoothAdapter.ACTION_SCAN_MODE_CHANGED));
+        // register the broadcast recievers
         registerReceiver(bluetoothStateReceiver, new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED));
         registerReceiver(rfduinoReceiver, RFduinoService.getIntentFilter());
 
+        // figure out what this does
         updateState(bluetoothAdapter.isEnabled() ? STATE_DISCONNECTED : STATE_BLUETOOTH_OFF);
-    }
-
-    private void upgradeState(int newState) {
-        if (newState > state) {
-            updateState(newState);
-        }
-    }
-
-    private void downgradeState(int newState) {
-        if (newState < state) {
-            updateState(newState);
-        }
     }
 
     private void updateState(int newState) {
@@ -232,86 +321,50 @@ public class MainActivity extends ActionBarActivity implements BluetoothAdapter.
     protected void onStop() {
         super.onStop();
 
-        bluetoothAdapter.stopLeScan(this);
+        // scan callback for stopScan() method
+        ScanCallback scanCallback = new ScanCallback() {
+            @Override
+            public void onScanFailed(int errorCode) {
+                super.onScanFailed(errorCode);
+            }
+        };
 
-        unregisterReceiver(scanModeReceiver);
+        // stop the scanner to free the resources
+        bluetoothAdapter.getBluetoothLeScanner().stopScan(scanCallback);
+        rfduinoService.close();
+        rfduinoService.disconnect();
+
+        // unregister the broadcast receivers
         unregisterReceiver(bluetoothStateReceiver);
         unregisterReceiver(rfduinoReceiver);
     }
 
     private void updateUi() {
-        // Enable Bluetooth
-        boolean on = state > STATE_BLUETOOTH_OFF;
-        enableBluetoothButton.setEnabled(!on);
-        enableBluetoothButton.setText(on ? "Bluetooth enabled" : "Enable Bluetooth");
-        scanButton.setEnabled(on);
+        //boolean on = state > STATE_BLUETOOTH_OFF;
 
-        // Scan
-        if (scanStarted && scanning) {
-            scanStatusText.setText("Scanning...");
-            scanButton.setText("Stop Scan");
-            scanButton.setEnabled(true);
-        } else if (scanStarted) {
-            scanStatusText.setText("Scan started...");
-            scanButton.setEnabled(false);
-        } else {
-            scanStatusText.setText("");
-            scanButton.setText("Scan");
-            scanButton.setEnabled(true);
-        }
-
-        // Connect
-        boolean connected = false;
-        String connectionText = "Disconnected";
+        // update the connection text
         if (state == STATE_CONNECTING) {
-            connectionText = "Connecting...";
+            connectionStatusText.setText("Connecting...");
         } else if (state == STATE_CONNECTED) {
             connected = true;
-            Intent intent = new Intent(this, SecondaryActivity.class);
-            startActivity(intent);
-            connectionText = "Connected";
+            connectionStatusText.setText("Connected");
+        } else {
+            connectionStatusText.setText("Disconnected");
         }
-        connectionStatusText.setText(connectionText);
-        connectButton.setEnabled(bluetoothDevice != null && state == STATE_DISCONNECTED);
-
-        // Send
-        sendZeroButton.setEnabled(connected);
-        sendValueButton.setEnabled(connected);
     }
 
+    // change to a method that takes the data and process it like I need
     private void addData(byte[] data) {
-        View view = getLayoutInflater().inflate(android.R.layout.simple_list_item_2, dataLayout, false);
-
-        TextView text1 = (TextView) view.findViewById(android.R.id.text1);
-        text1.setText(HexAsciiHelper.bytesToHex(data));
-
-        String ascii = HexAsciiHelper.bytesToAsciiMaybe(data);
-        if (ascii != null) {
-            TextView text2 = (TextView) view.findViewById(android.R.id.text2);
-            text2.setText(ascii);
+        if(data.toString().equals("0")) {
+            running = false;
+            Log.v(TAG, "device is not running");
+        } else {
+            running = true;
+            Log.v(TAG, "device is running");
         }
-
-        dataLayout.addView(
-                view, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
     }
 
     @Override
-    public void onLeScan(BluetoothDevice device, final int rssi, final byte[] scanRecord) {
-        bluetoothAdapter.stopLeScan(this);
-        bluetoothDevice = device;
-
-        MainActivity.this.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                deviceInfoText.setText(
-                        BluetoothHelper.getDeviceInfoText(bluetoothDevice, rssi, scanRecord));
-                updateUi();
-            }
-        });
-    }
-
-
-        @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.menu_main, menu);

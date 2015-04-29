@@ -60,6 +60,8 @@ public class RFduinoService extends Service {
             "com.rfduino.ACTION_CONNECTED";
     public final static String ACTION_DISCONNECTED =
             "com.rfduino.ACTION_DISCONNECTED";
+    public final static String ACTION_CONNECTING =
+            "com.rfduino.ACTION_CONNECTING";
     public final static String ACTION_DATA_AVAILABLE =
             "com.rfduino.ACTION_DATA_AVAILABLE";
     public final static String EXTRA_DATA =
@@ -83,6 +85,9 @@ public class RFduinoService extends Service {
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.i(TAG, "Disconnected from RFduino.");
                 broadcastUpdate(ACTION_DISCONNECTED);
+            } else if(newState == BluetoothProfile.STATE_CONNECTING) {
+                Log.i(TAG, "Connecting to RFduino.");
+                broadcastUpdate(ACTION_CONNECTING);
             }
         }
 
@@ -136,21 +141,23 @@ public class RFduinoService extends Service {
         }
     };
 
+    // connection state broadcast
     private void broadcastUpdate(final String action) {
         final Intent intent = new Intent(action);
         sendBroadcast(intent, Manifest.permission.BLUETOOTH);
     }
 
-    // I believe the data transfer broadcast
+    // data transfer broadcast
     private void broadcastUpdate(final String action,
                                  final BluetoothGattCharacteristic characteristic) {
-        if (UUID_RECEIVE.equals(characteristic.getUuid())) {
+        if (UUID_RECEIVE.equals(characteristic.getUuid())) { // if the UUID is the data received one
             final Intent intent = new Intent(action);
             intent.putExtra(EXTRA_DATA, characteristic.getValue());
             sendBroadcast(intent, Manifest.permission.BLUETOOTH);
         }
     }
 
+    // returns the service
     public class LocalBinder extends Binder {
         RFduinoService getService() {
             return RFduinoService.this;
@@ -256,6 +263,7 @@ public class RFduinoService extends Service {
         mBluetoothGatt = null;
     }
 
+    // not sure if used anywhere
     public void read() {
         if (mBluetoothGatt == null || mBluetoothGattService == null) {
             Log.w(TAG, "BluetoothGatt not initialized");
@@ -271,6 +279,7 @@ public class RFduinoService extends Service {
     public boolean send(byte[] data) {
         if (mBluetoothGatt == null || mBluetoothGattService == null) {
             Log.w(TAG, "BluetoothGatt not initialized");
+
             return false;
         }
 
@@ -294,4 +303,5 @@ public class RFduinoService extends Service {
         filter.addAction(ACTION_DATA_AVAILABLE);
         return filter;
     }
+
 }

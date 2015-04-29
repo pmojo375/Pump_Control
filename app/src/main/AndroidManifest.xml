@@ -21,10 +21,6 @@
 
             </intent-filter>
         </activity>
-        <activity
-            android:name=".SecondaryActivity"
-            android:label="@string/title_activity_secondary" >
-        </activity>
 
         <service android:name=".RFduinoService" />
     </application>

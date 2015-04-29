@@ -15,9 +15,6 @@ public class BluetoothHelper {
     public static String getDeviceInfoText(BluetoothDevice device, int rssi, byte[] scanRecord) {
         return new StringBuilder()
                 .append("Name: ").append(device.getName())
-                .append("\nMAC: ").append(device.getAddress())
-                .append("\nRSSI: ").append(rssi)
-                .append("\nScan Record:").append(parseScanRecord(scanRecord))
                 .toString();
     }
 

@@ -1,6 +1,7 @@
 package com.mojo.pumpcontrol;
 
 import android.content.Context;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -56,7 +57,9 @@ public class HexAsciiHelper {
                 return null;
             }
         }
+        Log.v("IMPORTANT", ascii.toString());
         return ascii.toString();
+
     }
 
     public static byte[] hexToBytes(String hex) {

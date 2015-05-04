@@ -5,18 +5,13 @@ android:layout_height="match_parent"
 android:orientation="vertical"
 android:padding="10dp">
 
-<TextView
-    style="?android:attr/listSeparatorTextViewStyle"
-    android:layout_width="fill_parent"
-    android:layout_height="wrap_content"
-    android:id="@+id/textView3"
-    android:text="Connect Device"
-    android:layout_marginTop="5dip" />
-
-<TextView
+    <TextView
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:id="@+id/connectionStatus" />
+    android:id="@+id/connectionStatus"
+    android:textStyle="bold"
+    android:layout_gravity="center"
+    android:textSize="24dp" />
 
 <Button
     android:layout_width="fill_parent"
@@ -26,29 +21,43 @@ android:padding="10dp">
     android:layout_gravity="center_horizontal"
     android:enabled="false" />
 
-<LinearLayout
-    android:layout_width="match_parent"
-    android:layout_height="0dp"
-    android:layout_weight="1"
-    android:orientation="horizontal"
-    android:gravity="center_vertical">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Low"
+            android:id="@+id/low" />
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Mid"
+            android:id="@+id/mid" />
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="High"
+            android:id="@+id/high" />
+
+    </LinearLayout>
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/toggle_text"
-        android:paddingEnd="15dp" />
+        android:id="@+id/mode"
+        android:text="@string/mode_text"
+        android:layout_gravity="center_horizontal"
+        android:textSize="24dp" />
 
-
-    <ToggleButton
-        android:layout_width="fill_parent"
-        android:layout_height="wrap_content"
-        android:id="@+id/test"
-        android:text="@string/toggle_pump" />
-
-</LinearLayout>
-
-<LinearLayout
+    <LinearLayout
     android:layout_width="match_parent"
     android:layout_height="0dp"
     android:layout_weight="1"

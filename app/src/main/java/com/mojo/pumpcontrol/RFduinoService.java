@@ -67,6 +67,12 @@ public class RFduinoService extends Service {
     public final static String EXTRA_DATA =
             "com.rfduino.EXTRA_DATA";
 
+    private int mConnectionState = STATE_DISCONNECTED;
+
+    private static final int STATE_DISCONNECTED = 0;
+    private static final int STATE_CONNECTING = 1;
+    private static final int STATE_CONNECTED = 2;
+
     public final static UUID UUID_SERVICE = BluetoothHelper.sixteenBitUuid(0x2220);
     public final static UUID UUID_RECEIVE = BluetoothHelper.sixteenBitUuid(0x2221);
     public final static UUID UUID_SEND = BluetoothHelper.sixteenBitUuid(0x2222);
@@ -77,17 +83,22 @@ public class RFduinoService extends Service {
     // connection change and services discovered.
     private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
         @Override
-        public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+        public void onConnectionStateChange(BluetoothGatt gatt, int status,
+                                            int newState) {
+            String intentAction;
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                Log.i(TAG, "Connected to RFduino.");
+                intentAction = ACTION_CONNECTED;
+                mConnectionState = STATE_CONNECTED;
+                broadcastUpdate(intentAction);
+                Log.i(TAG, "Connected to GATT server.");
                 Log.i(TAG, "Attempting to start service discovery:" +
                         mBluetoothGatt.discoverServices());
+
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                Log.i(TAG, "Disconnected from RFduino.");
-                broadcastUpdate(ACTION_DISCONNECTED);
-            } else if(newState == BluetoothProfile.STATE_CONNECTING) {
-                Log.i(TAG, "Connecting to RFduino.");
-                broadcastUpdate(ACTION_CONNECTING);
+                intentAction = ACTION_DISCONNECTED;
+                mConnectionState = STATE_DISCONNECTED;
+                Log.i(TAG, "Disconnected from GATT server.");
+                broadcastUpdate(intentAction);
             }
         }
 
@@ -144,16 +155,24 @@ public class RFduinoService extends Service {
     // connection state broadcast
     private void broadcastUpdate(final String action) {
         final Intent intent = new Intent(action);
-        sendBroadcast(intent, Manifest.permission.BLUETOOTH);
+        sendBroadcast(intent);
     }
 
     // data transfer broadcast
     private void broadcastUpdate(final String action,
                                  final BluetoothGattCharacteristic characteristic) {
-        if (UUID_RECEIVE.equals(characteristic.getUuid())) { // if the UUID is the data received one
+        if (UUID_RECEIVE.equals(characteristic.getUuid())) { // if the characteristic is a receive
             final Intent intent = new Intent(action);
             intent.putExtra(EXTRA_DATA, characteristic.getValue());
-            sendBroadcast(intent, Manifest.permission.BLUETOOTH);
+            sendBroadcast(intent);
+        }
+    }
+
+    public String getConnectionState() {
+        if(mConnectionState == 0) {
+            return "Disconnected";
+        } else {
+            return "Connected";
         }
     }
 
@@ -174,7 +193,7 @@ public class RFduinoService extends Service {
         // After using a given device, you should make sure that BluetoothGatt.close() is called
         // such that resources are cleaned up properly.  In this particular example, close() is
         // invoked when the UI is disconnected from the Service.
-        close();
+        //  close();
         return super.onUnbind(intent);
     }
 
@@ -209,11 +228,10 @@ public class RFduinoService extends Service {
      * Connects to the GATT server hosted on the Bluetooth LE device.
      *
      * @param address The device address of the destination device.
-     *
      * @return Return true if the connection is initiated successfully. The connection result
-     *         is reported asynchronously through the
-     *         {@code BluetoothGattCallback#onConnectionStateChange(android.bluetooth.BluetoothGatt, int, int)}
-     *         callback.
+     * is reported asynchronously through the
+     * {@code BluetoothGattCallback#onConnectionStateChange(android.bluetooth.BluetoothGatt, int, int)}
+     * callback.
      */
     public boolean connect(final String address) {
         if (mBluetoothAdapter == null || address == null) {
